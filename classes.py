@@ -1,18 +1,26 @@
 
 class Simulation:
-    def __init__(self):
+    def __init__(self, historical_prices, historical_demand, historical_supply):
         self.agents = []
-
+        self.historical_prices = historical_prices
+        self.historical_demand = historical_demand
+        self.historical_supply = historical_supply
     def create_agents(self):
         pass
+        #Bidding strategy, bid types, agent class instances will be created here
 
     def run_day_ahead_market(self):
         pass
+        #DayAheadMarket class instance will be created here and its methods will be called here
 
     def run_intraday_market(self):
         pass
+        #IntradayMarket class instance will be created here and its methods will be called here
 
     def run_simulation(self):
+        self.create_agents()
+        #self.run_day_ahead_market()
+        #self.run_intraday_market()
         pass
 
 class Market:
@@ -20,9 +28,6 @@ class Market:
         self.agents = []
         self.bids = []
         self.market_clearing_prices = []
-
-    def register_agent(self, agent):
-        pass
 
     def collect_bids(self):
         pass
