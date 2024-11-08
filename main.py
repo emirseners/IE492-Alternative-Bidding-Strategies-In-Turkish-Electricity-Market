@@ -203,18 +203,33 @@ if __name__ == "__main__":
     historical_supply = historical_data['Supply'].tolist()
 
     simulations = pd.ExcelFile('Agents.xlsx').sheet_names
-    for simulation_name in simulations:
-        print(f"Running Simulation: {simulation_name}")
-        agent_df = pd.read_excel('Agents.xlsx', sheet_name=simulation_name)
-        agent_df.fillna({'startup_cost': 0, 'variable_cost': 0, 'strategy_params': '{}'}, inplace=True)
-        agent_attributes = agent_df.to_dict(orient='records')
+    with pd.ExcelWriter('SimulationResults.xlsx') as writer:
+        for simulation_name in simulations:
+            print(f"Running Simulation: {simulation_name}")
+            agent_df = pd.read_excel('Agents.xlsx', sheet_name=simulation_name)
+            agent_df.fillna({'startup_cost': 0, 'variable_cost': 0, 'strategy_params': '{}'}, inplace=True)
+            agent_attributes = agent_df.to_dict(orient='records')
 
-        simulation = Simulation(historical_prices.copy(), historical_demand.copy(), historical_supply.copy(), agent_attributes)
-        simulation.run_simulation()
+            simulation = Simulation(historical_prices.copy(), historical_demand.copy(), historical_supply.copy(), agent_attributes)
+            simulation.run_simulation()
+            simulation_results = []
+            for result in simulation.market_results:
+                agent_trades = result['agent_trades']
+                for agent_name, quantity in agent_trades.items():
+                    simulation_results.append({
+                        'Hour': result['hour'],
+                        'Agent': agent_name,
+                        'Quantity': quantity,
+                        'MarketClearingPrice': result['market_clearing_price'],
+                        'TotalTradedQuantity': result['total_traded_quantity']
+                    })
 
-        for result in simulation.market_results:
-            print(f"Hour {result['hour']}: Clearing Price = {result['market_clearing_price']}, "f"Total Traded Quantity = {result['total_traded_quantity']}")
-            print("Agent Trades:")
-            for agent_name, quantity in result['agent_trades'].items():
-                print(f"  {agent_name}: {quantity}")
-            print()
+            df_results = pd.DataFrame(simulation_results)
+            df_results.to_excel(writer, sheet_name=simulation_name, index=False)
+
+            for result in simulation.market_results:
+                print(f"Hour {result['hour']}: Clearing Price = {result['market_clearing_price']}, "f"Total Traded Quantity = {result['total_traded_quantity']}")
+                print("Agent Trades:")
+                for agent_name, quantity in result['agent_trades'].items():
+                    print(f"  {agent_name}: {quantity}")
+                print()
