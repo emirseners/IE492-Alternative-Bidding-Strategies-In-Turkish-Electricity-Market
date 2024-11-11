@@ -190,11 +190,27 @@ class RandomBiddingStrategy(BiddingStrategy):
     def determine_price(self, hour, agent):
         pass
 
+class HighRiskBiddingStrategy(BiddingStrategy):
+    def __init__(self, historical_prices):
+        super().__init__(historical_prices)
+
+    def determine_price(self, hour, agent):
+        pass
+
+class LowRiskBiddingStrategy(BiddingStrategy):
+    def __init__(self, historical_prices):
+        super().__init__(historical_prices)
+
+    def determine_price(self, hour, agent):
+        pass
+
 class Bid:
-    def __init__(self, agent, quantity, price):
+    def __init__(self, agent, quantity, price, bid_type='hourly', hours=None):
         self.agent = agent
         self.quantity = quantity
         self.price = price
+        self.bid_type = bid_type
+        self.hours = hours if hours else []
 
 if __name__ == "__main__":
     historical_data = pd.read_excel('MarketData.xlsx')
