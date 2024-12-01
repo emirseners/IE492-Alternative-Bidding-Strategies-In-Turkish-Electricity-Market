@@ -22,27 +22,36 @@ class Simulation:
             if isinstance(strategy_params, str):
                 strategy_params = ast.literal_eval(strategy_params)
 
-            if strategy_class_name == 'NaiveBiddingStrategy':
-                strategy = NaiveBiddingStrategy(**strategy_params)
-            elif strategy_class_name == 'MovingAverageBiddingStrategy':
-                strategy = MovingAverageBiddingStrategy(**strategy_params)
-            elif strategy_class_name == 'ArimaBiddingStrategy':
-                strategy = ArimaBiddingStrategy(**strategy_params)
-            else:
-                raise ValueError(f"Error: {strategy_class_name}")
-
-            strategy.train(self.training_data)
             agent_name = attributes['name']
-
-            if agent_name in self.validation_data.columns:
-                schedule = self.validation_data[agent_name].tolist()
+            if attributes['type'].lower() == 'consumer':
+                strategy = None
+                if agent_name in self.validation_data.columns:
+                    schedule = self.validation_data[agent_name].tolist()
+                    price_column = f"{agent_name}_Price"
+                    if price_column in self.validation_data.columns:
+                        prices = self.validation_data[price_column].tolist()
+                    else:
+                        raise ValueError(f"Consumer error: {agent_name}")
+                else:
+                    raise ValueError(f"Consumer error: {agent_name}")
+                agent = Consumer(name=agent_name, demand_schedule=schedule, bidding_prices=prices)
             else:
-                raise ValueError(f"Error: {agent_name}")
+                if strategy_class_name == 'NaiveBiddingStrategy':
+                    strategy = NaiveBiddingStrategy(**strategy_params)
+                elif strategy_class_name == 'MovingAverageBiddingStrategy':
+                    strategy = MovingAverageBiddingStrategy(**strategy_params)
+                elif strategy_class_name == 'ArimaBiddingStrategy':
+                    strategy = ArimaBiddingStrategy(**strategy_params)
+                else:
+                    raise ValueError(f"Bidding strategy error: {strategy_class_name}")
+                strategy.train(self.training_data)
 
-            if attributes['type'].lower() == 'producer':
+                if agent_name in self.validation_data.columns:
+                    schedule = self.validation_data[agent_name].tolist()
+                else:
+                    raise ValueError(f"Agent error: {agent_name}")
+
                 agent = Producer(name=agent_name, generation_schedule=schedule, bidding_strategy=strategy, startup_cost=float(attributes.get('startup_cost', 0)), variable_cost=float(attributes.get('variable_cost', 0)))
-            elif attributes['type'].lower() == 'consumer':
-                agent = Consumer(name=agent_name, demand_schedule=schedule, bidding_strategy=strategy)
 
             self.agents.append(agent)
         self.market.agents.extend(self.agents)
@@ -97,7 +106,7 @@ class DayAheadMarket:
                 break
 
         if market_clearing_price is None:
-            raise ValueError(f"Market error: {index}")
+            raise ValueError(f"MCP error: {index}")
 
         self.market_prices.append(market_clearing_price)
 
@@ -105,15 +114,15 @@ class DayAheadMarket:
         return market_result
 
 class Agent:
-    def __init__(self, name, bidding_strategy):
+    def __init__(self, name):
         self.name = name
-        self.bidding_strategy = bidding_strategy
         self.dates = []
 
 class Producer(Agent):
     def __init__(self, name, generation_schedule, bidding_strategy, startup_cost=0, variable_cost=0):
-        super().__init__(name, bidding_strategy)
+        super().__init__(name)
         self.generation_schedule = generation_schedule
+        self.bidding_strategy = bidding_strategy
         self.startup_cost = startup_cost
         self.variable_cost = variable_cost
 
@@ -135,14 +144,18 @@ class Producer(Agent):
             return None
 
 class Consumer(Agent):
-    def __init__(self, name, demand_schedule, bidding_strategy):
-        super().__init__(name, bidding_strategy)
+    def __init__(self, name, demand_schedule, bidding_prices):
+        super().__init__(name)
         self.demand_schedule = demand_schedule
+        self.bidding_prices = bidding_prices
 
     def submit_bid(self, index, date):
-        self.bidding_strategy.predict(index, date, self)
-        price = self.bidding_strategy.bidding_price
-        quantity = self.demand_schedule[index] if index < len(self.demand_schedule) else 0
+        if index < len(self.demand_schedule) and index < len(self.bidding_prices):
+            quantity = self.demand_schedule[index]
+            price = self.bidding_prices[index]
+        else:
+            quantity = 0
+            price = 0
 
         if quantity > 0:
             bid = Bid(agent=self, quantity=quantity, price=price)
@@ -244,7 +257,7 @@ if __name__ == "__main__":
 
     with pd.ExcelWriter('SimulationResults.xlsx') as writer:
         for simulation_name in simulations:
-            print(f"Simulation No: {simulation_name}")
+            print(f"Running Simulation: {simulation_name}")
             agent_df = pd.read_excel('Agents.xlsx', sheet_name=simulation_name)
             agent_df.fillna({'startup_cost': 0, 'variable_cost': 0, 'strategy_params': '{}'}, inplace=True)
             agent_attributes = agent_df.to_dict(orient='records')
@@ -292,4 +305,4 @@ if __name__ == "__main__":
 
             df_results = pd.DataFrame(all_simulation_results)
             df_results.to_excel(writer, sheet_name=simulation_name, index=False)
-            print(f"Completed sim: {simulation_name}")
+            print(f"Completed Simulation: {simulation_name}")
