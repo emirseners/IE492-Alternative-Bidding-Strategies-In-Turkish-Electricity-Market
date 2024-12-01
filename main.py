@@ -242,9 +242,32 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
         lag_1_price = self.training_data.loc[self.training_data['Date'] == lag_1_time, 'Prices']
         lag_7_price = self.training_data.loc[self.training_data['Date'] == lag_7_time, 'Prices']
 
+        natural_gas_forecast = 604.57 * math.log(natural_gas_kgup) + 0.14 * lag_1_price + 0.22 * lag_7_price - 3802.96
+
+        P_cost = 1778   # Marginal Cost
+        P_estimated = natural_gas_forecast
+        P_max = 3000       # Maksimum teklif fiyatı
+        Q_max = 15330        # Maksimum üretim miktarı (Mwh)
+
+        mu = P_estimated
+
+        p1 = 0.01  # P_cost için
+        p2 = 0.99  # P_max için
+
+        z1 = norm.ppf(p1) 
+        z2 = norm.ppf(p2)
+
+        sigma1 = (P_cost - mu) / z1
+        sigma2 = (P_max - mu) / z2
+        sigma = (abs(sigma1) + abs(sigma2)) / 2
+
+        price_range = np.linspace(P_cost, P_max, 1000)
+        cdf_values = norm.cdf(price_range, loc=mu, scale=sigma)
+        production = Q_max * cdf_values
+
         for i in range(self.num_bids):
-            price = 13131231231
-            quantity = 132131231
+            price = price_range[i]
+            quantity = production[i]
             self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
 
 class Bid:
