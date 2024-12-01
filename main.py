@@ -1,13 +1,14 @@
 import pandas as pd
 import ast
-from datetime import datetime
+from datetime import datetime, timedelta
 from statsmodels.tsa.arima.model import ARIMA
 
 class Simulation:
-    def __init__(self, agent_attributes, training_data, validation_data):
+    def __init__(self, agent_attributes, training_data, validation_data, exogenous_data):
         self.agent_attributes = agent_attributes
         self.training_data = training_data
         self.validation_data = validation_data
+        self.exogenous_data = exogenous_data
         self.agents = []
         self.market = DayAheadMarket()
         self.market_results = []
@@ -24,7 +25,6 @@ class Simulation:
 
             agent_name = attributes['name']
             if attributes['type'].lower() == 'consumer':
-                strategy = None
                 if agent_name in self.validation_data.columns:
                     schedule = self.validation_data[agent_name].tolist()
                     price_column = f"{agent_name}_Price"
@@ -42,6 +42,8 @@ class Simulation:
                     strategy = MovingAverageBiddingStrategy(**strategy_params)
                 elif strategy_class_name == 'ArimaBiddingStrategy':
                     strategy = ArimaBiddingStrategy(**strategy_params)
+                elif strategy_class_name == 'NaturalGasBiddingStrategy':
+                    strategy = NaturalGasBiddingStrategy(exogenous_data=self.exogenous_data, training_data=self.training_data, **strategy_params)
                 else:
                     raise ValueError(f"Bidding strategy error: {strategy_class_name}")
                 strategy.train(self.training_data)
@@ -50,13 +52,13 @@ class Simulation:
                     schedule = self.validation_data[agent_name].tolist()
                 else:
                     raise ValueError(f"Agent error: {agent_name}")
-
-                agent = Producer(name=agent_name, generation_schedule=schedule, bidding_strategy=strategy, startup_cost=float(attributes.get('startup_cost', 0)), variable_cost=float(attributes.get('variable_cost', 0)))
+                
+                agent = Producer(name=agent_name, generation_schedule=schedule, bidding_strategy=strategy)
 
             self.agents.append(agent)
         self.market.agents.extend(self.agents)
         self.agent_trades = {agent.name: [0]*self.num_periods for agent in self.agents}
-
+    
     def run_day_ahead_market(self):
         for index, date in enumerate(self.dates):
             self.market.collect_bids(index, date)
@@ -74,9 +76,9 @@ class DayAheadMarket:
 
     def collect_bids(self, index, date):
         for agent in self.agents:
-            bid = agent.submit_bid(index, date)
-            if bid:
-                self.bids.append(bid)
+            bids = agent.submit_bid(index, date)
+            if bids:
+                self.bids.extend(bids)
 
     def clear_market(self, index):
         supply_bids = [bid for bid in self.bids if isinstance(bid.agent, Producer)]
@@ -106,7 +108,7 @@ class DayAheadMarket:
                 break
 
         if market_clearing_price is None:
-            raise ValueError(f"MCP error: {index}")
+            raise ValueError(f"Market clear error: {index}")
 
         self.market_prices.append(market_clearing_price)
 
@@ -119,29 +121,25 @@ class Agent:
         self.dates = []
 
 class Producer(Agent):
-    def __init__(self, name, generation_schedule, bidding_strategy, startup_cost=0, variable_cost=0):
+    def __init__(self, name, generation_schedule, bidding_strategy):
         super().__init__(name)
         self.generation_schedule = generation_schedule
         self.bidding_strategy = bidding_strategy
-        self.startup_cost = startup_cost
-        self.variable_cost = variable_cost
-
-    def calculate_marginal_cost(self, quantity):
-        return self.variable_cost
 
     def submit_bid(self, index, date):
-        self.bidding_strategy.predict(index, date, self)
-        price = self.bidding_strategy.bidding_price
-        quantity = self.generation_schedule[index] if index < len(self.generation_schedule) else 0
-        marginal_cost = self.calculate_marginal_cost(quantity)
-        price = max(price, marginal_cost)
-
-        if quantity > 0:
-            bid = Bid(agent=self, quantity=quantity, price=price)
+        bids = []
+        self.bidding_strategy.create_bid(index, date, self)
+        for bid_info in self.bidding_strategy.bidding_prices_quantities:
+            price = bid_info['price']
+            quantity = bid_info['quantity']
+            if quantity > 0:
+                bid = Bid(agent=self, quantity=quantity, price=price)
+                bids.append(bid)
+        if bids:
             self.dates.append(date)
-            return bid
+            return bids
         else:
-            return None
+            return []
 
 class Consumer(Agent):
     def __init__(self, name, demand_schedule, bidding_prices):
@@ -160,19 +158,19 @@ class Consumer(Agent):
         if quantity > 0:
             bid = Bid(agent=self, quantity=quantity, price=price)
             self.dates.append(date)
-            return bid
+            return [bid]
         else:
-            return None
+            return []
 
 class BiddingStrategy:
     def __init__(self):
-        self.bidding_price = None
+        self.bidding_prices_quantities = []
 
     def train(self, training_data):
         pass
 
-    def predict(self, index, date, agent):
-        pass
+    def create_bid(self, index, date, agent):
+        self.bidding_prices_quantities = []
 
 class NaiveBiddingStrategy(BiddingStrategy):
     def __init__(self, **kwargs):
@@ -183,12 +181,16 @@ class NaiveBiddingStrategy(BiddingStrategy):
     def train(self, training_data):
         self.historical_prices = training_data['Prices'].tolist()
 
-    def predict(self, index, date, agent):
+    def create_bid(self, index, date, agent):
+        self.bidding_prices_quantities = []
         price_index = len(self.historical_prices) - self.period + index
         if 0 <= price_index < len(self.historical_prices):
-            self.bidding_price = self.historical_prices[price_index]
+            price = self.historical_prices[price_index]
         else:
-            self.bidding_price = 50
+            price = 50
+        quantity = agent.generation_schedule[index] if index < len(agent.generation_schedule) else 0
+        if quantity > 0:
+            self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
 
 class MovingAverageBiddingStrategy(BiddingStrategy):
     def __init__(self, **kwargs):
@@ -199,12 +201,16 @@ class MovingAverageBiddingStrategy(BiddingStrategy):
     def train(self, training_data):
         self.historical_prices = training_data['Prices'].tolist()
 
-    def predict(self, index, date, agent):
+    def create_bid(self, index, date, agent):
+        self.bidding_prices_quantities = []
         if len(self.historical_prices) >= self.window_size:
             prices = self.historical_prices[-self.window_size:]
-            self.bidding_price = sum(prices) / len(prices)
+            price = sum(prices) / len(prices)
         else:
-            self.bidding_price = 50
+            price = 50
+        quantity = agent.generation_schedule[index] if index < len(agent.generation_schedule) else 0
+        if quantity > 0:
+            self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
 
 class ArimaBiddingStrategy(BiddingStrategy):
     def __init__(self, **kwargs):
@@ -213,35 +219,33 @@ class ArimaBiddingStrategy(BiddingStrategy):
     def train(self, training_data):
         pass
 
-    def predict(self, index, date, agent):
+    def create_bid(self, index, date, agent):
         pass
 
-class HighRiskBiddingStrategy(BiddingStrategy):
-    def __init__(self, **kwargs):
+class NaturalGasBiddingStrategy(BiddingStrategy):
+    def __init__(self, exogenous_data, training_data, **kwargs):
         super().__init__()
+        self.exogenous_data = exogenous_data
+        self.training_data = training_data
+        self.num_bids = 1000
 
     def train(self, training_data):
         pass
 
-    def predict(self, index, date, agent):
-        pass
+    def create_bid(self, index, date, agent):
+        self.bidding_prices_quantities = []
+        natural_gas_kgup = self.exogenous_data.loc[self.exogenous_data['Date'] == date, 'NaturalgasKgup']
 
-class LowRiskBiddingStrategy(BiddingStrategy):
-    def __init__(self, **kwargs):
-        super().__init__()
+        lag_1_time = (datetime.strptime(date, "%d.%m.%Y %H:%M:%S") - timedelta(days=1)).strftime("%d.%m.%Y %H:%M:%S")
+        lag_7_time = (datetime.strptime(date, "%d.%m.%Y %H:%M:%S") - timedelta(days=7)).strftime("%d.%m.%Y %H:%M:%S")
 
-    def train(self, training_data):
-        pass
+        lag_1_price = self.training_data.loc[self.training_data['Date'] == lag_1_time, 'Prices']
+        lag_7_price = self.training_data.loc[self.training_data['Date'] == lag_7_time, 'Prices']
 
-    def predict(self, index, date, agent):
-        pass
-
-class ZeroBiddingStrategy(BiddingStrategy):
-    def __init__(self, **kwargs):
-        super().__init__()
-
-    def predict(self, index, date, agent):
-        pass
+        for i in range(self.num_bids):
+            price = 13131231231
+            quantity = 132131231
+            self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
 
 class Bid:
     def __init__(self, agent, quantity, price):
@@ -252,6 +256,10 @@ class Bid:
 if __name__ == "__main__":
     historical_data_df = pd.read_excel('MarketData.xlsx', parse_dates=['Date'])
     historical_data_df.sort_values(by='Date', inplace=True)
+    
+    exogenous_data_df = pd.read_excel('ExogenousVariables.xlsx', parse_dates=['Date'])
+    exogenous_data_df.sort_values(by='Date', inplace=True)
+
     simulations = pd.ExcelFile('Agents.xlsx').sheet_names
     validation_window_size = 24
 
@@ -259,7 +267,7 @@ if __name__ == "__main__":
         for simulation_name in simulations:
             print(f"Running Simulation: {simulation_name}")
             agent_df = pd.read_excel('Agents.xlsx', sheet_name=simulation_name)
-            agent_df.fillna({'startup_cost': 0, 'variable_cost': 0, 'strategy_params': '{}'}, inplace=True)
+            agent_df.fillna({'strategy_params': '{}'}, inplace=True)
             agent_attributes = agent_df.to_dict(orient='records')
 
             bidding_quantities_df = pd.read_excel('BiddingQuantities.xlsx', sheet_name=simulation_name, parse_dates=['Date'])
@@ -277,10 +285,10 @@ if __name__ == "__main__":
                 validation_dates = validation_data['Date'].tolist()
 
                 training_data = historical_data_df[historical_data_df['Date'] < validation_dates[0]]
-                if training_data.empty:
-                    continue
 
-                simulation = Simulation(agent_attributes, training_data, validation_data)
+                exogenous_data = exogenous_data_df[exogenous_data_df['Date'].isin(validation_dates)].reset_index(drop=True)
+
+                simulation = Simulation(agent_attributes, training_data, validation_data, exogenous_data)
                 simulation.create_and_add_agents()
                 simulation.run_day_ahead_market()
 
