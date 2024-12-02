@@ -266,8 +266,12 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
         production = Q_max * cdf_values
 
         for i in range(self.num_bids):
-            price = price_range[i]
-            quantity = production[i]
+            if i==0:
+                price = price_range[i]
+                quantity = production[i]
+            else:
+                price = price_range[i]
+                quantity = production[i]-production[i-1]
             self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
 
 class Bid:
