@@ -248,6 +248,7 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
         P_estimated = natural_gas_forecast
         P_max = 3000       # Maksimum teklif fiyatı
         Q_max = 15330        # Maksimum üretim miktarı (Mwh)
+        Q_mean = natural_gas_kgup
 
         mu = P_estimated
 
@@ -263,7 +264,10 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
 
         price_range = np.linspace(P_cost, P_max, 1000)
         cdf_values = norm.cdf(price_range, loc=mu, scale=sigma)
-        production = Q_max * cdf_values
+
+        production=[]
+        for i in cdf_values:
+            production.append(max(((2*Q_mean-Q_max)+(2*Q_max-2*Q_mean) * i), 0))
 
         for i in range(self.num_bids):
             if i==0:
