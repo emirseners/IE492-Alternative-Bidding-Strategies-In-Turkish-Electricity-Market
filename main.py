@@ -44,6 +44,10 @@ class Simulation:
                     strategy = ArimaBiddingStrategy(**strategy_params)
                 elif strategy_class_name == 'NaturalGasBiddingStrategy':
                     strategy = NaturalGasBiddingStrategy(exogenous_data=self.exogenous_data, training_data=self.training_data, **strategy_params)
+                elif strategy_class_name == 'CoalBiddingStrategy':
+                    strategy = CoalBiddingStrategy(exogenous_data=self.exogenous_data, training_data=self.training_data, **strategy_params)
+                elif strategy_class_name == 'DammedHydroBiddingStrategy':
+                    strategy = DammedHydroBiddingStrategy(exogenous_data=self.exogenous_data, training_data=self.training_data, **strategy_params)
                 else:
                     raise ValueError(f"Bidding strategy error: {strategy_class_name}")
                 strategy.train(self.training_data)
