@@ -274,6 +274,40 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
                 quantity = production[i]-production[i-1]
             self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
 
+
+class CoalBiddingStrategy(BiddingStrategy):
+    def __init__(self, exogenous_data, training_data, **kwargs):
+        super().__init__()
+        self.exogenous_data = exogenous_data
+        self.training_data = training_data
+
+    def train(self, training_data):
+        pass
+
+    def create_bid(self, index, date, agent):
+        self.bidding_prices_quantities = []
+        coal_price = self.exogenous_data.loc[self.exogenous_data['Date'] == date, 'CoalPrice']
+        
+        efficiencies = [0.31, 0.33, 0.34, 0.35, 0.36, 0.37, 0.38, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.47, 0.48, 0.49]
+        productions = [309.26, 505.16, 933.19, 1347.35, 1522.42, 1567.96, 1293.54, 1170.84, 1270.37, 1085.99, 1039.55, 793.80, 597.04, 562.35, 386.15, 341.74, 236.69, 128.13, 78.44]
+        prices=[]
+
+        electricity_generation = 7 #mWh
+        startup_fuel = 7.50 #MMBTU/MW Capacity
+        other_startup_cost = 5.61 
+        cycling_cost = other_startup_cost + startup_fuel * (coal_price / 25.792)
+        markdown = cycling_cost / 16
+
+        for i in efficiencies:
+            stmc = coal_price / (i * electricity_generation)
+            prices.append(stmc-markdown)
+
+        for i in range(prices):
+            price = prices[i]
+            quantity = productions[i]
+            self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
+
+
 class Bid:
     def __init__(self, agent, quantity, price):
         self.agent = agent
