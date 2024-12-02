@@ -226,6 +226,26 @@ class ArimaBiddingStrategy(BiddingStrategy):
     def create_bid(self, index, date, agent):
         pass
 
+class HighRiskBiddingStrategy(BiddingStrategy):
+    def __init__(self, **kwargs):
+        super().__init__()
+
+    def train(self, training_data):
+        pass
+
+    def create_bid(self, index, date, agent):
+        pass
+
+class LowRiskBiddingStrategy(BiddingStrategy):
+    def __init__(self, **kwargs):
+        super().__init__()
+
+    def train(self, training_data):
+        pass
+
+    def create_bid(self, index, date, agent):
+        pass
+
 class NaturalGasBiddingStrategy(BiddingStrategy):
     def __init__(self, exogenous_data, training_data, **kwargs):
         super().__init__()
