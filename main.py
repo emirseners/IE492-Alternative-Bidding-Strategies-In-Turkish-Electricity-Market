@@ -263,7 +263,7 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
         sigma = (abs(sigma1) + abs(sigma2)) / 2
 
         price_range = np.linspace(P_cost, P_max, 1000)
-        cdf_values = norm.cdf(price_range, loc=mu, scale=sigma)
+        cdf_values = norm.cdf(price_range, loc=mu, scale=sigma/2)
 
         production=[]
         for i in cdf_values:
@@ -311,6 +311,56 @@ class CoalBiddingStrategy(BiddingStrategy):
             quantity = productions[i]
             self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
 
+class DammedHydroBiddingStrategy(BiddingStrategy):
+    def __init__(self, exogenous_data, training_data, **kwargs):
+        super().__init__()
+        self.exogenous_data = exogenous_data
+        self.training_data = training_data
+        self.num_bids = 1000
+
+    def train(self, training_data):
+        pass
+
+    def create_bid(self, index, date, agent):
+        self.bidding_prices_quantities = []
+        dammed_hydro_kgup = self.exogenous_data.loc[self.exogenous_data['Date'] == date, 'DammedHydroKgup']
+        residual_load = self.exogenous_data.loc[self.exogenous_data['Date'] == date, 'ResidualLoad']
+
+        lag_1_time = (datetime.strptime(date, "%d.%m.%Y %H:%M:%S") - timedelta(days=1)).strftime("%d.%m.%Y %H:%M:%S")
+
+        lag_1_price = self.training_data.loc[self.training_data['Date'] == lag_1_time, 'Prices']
+
+        dammed_hydro_forecast = 342.313 * (dammed_hydro_kgup/residual_load) + 0.01274 * residual_load + 0.7737 * lag_1_price + 179.72
+
+        P_cost = 0   # Marginal Cost
+        P_estimated = dammed_hydro_forecast
+        P_max = 3000       # Maksimum teklif fiyatı
+        Q_max = 13520        # Maksimum üretim miktarı (Mwh)
+        Q_mean = dammed_hydro_kgup
+
+        mu = P_estimated
+
+        p1 = 0.01  # P_cost için
+        p2 = 0.99  # P_max için
+
+        z1 = norm.ppf(p1) 
+        z2 = norm.ppf(p2)
+
+        sigma1 = (P_cost - mu) / z1
+        sigma2 = (P_max - mu) / z2
+        sigma = (abs(sigma1) + abs(sigma2)) / 2
+
+        price_range = np.linspace(P_cost, P_max, 1000)
+        cdf_values = norm.cdf(price_range, loc=mu, scale=sigma/2)
+        
+        production=[]
+        for i in cdf_values:
+            production.append(max(((2*Q_mean-Q_max)+(2*Q_max-2*Q_mean) * i), 0))
+
+        for i in range(self.num_bids):
+            price = price_range[i]
+            quantity = production[i]
+            self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
 
 class Bid:
     def __init__(self, agent, quantity, price):
