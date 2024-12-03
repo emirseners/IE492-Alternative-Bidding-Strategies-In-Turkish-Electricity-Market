@@ -1,7 +1,9 @@
 import pandas as pd
 import ast
-from datetime import datetime, timedelta
-from statsmodels.tsa.arima.model import ARIMA
+import numpy as np
+import math
+from datetime import timedelta
+from scipy.stats import norm
 
 class Simulation:
     def __init__(self, agent_attributes, training_data, validation_data, exogenous_data):
@@ -30,33 +32,25 @@ class Simulation:
                     price_column = f"{agent_name}_Price"
                     if price_column in self.validation_data.columns:
                         prices = self.validation_data[price_column].tolist()
-                    else:
-                        raise ValueError(f"Consumer error: {agent_name}")
-                else:
-                    raise ValueError(f"Consumer error: {agent_name}")
+
                 agent = Consumer(name=agent_name, demand_schedule=schedule, bidding_prices=prices)
             else:
                 if strategy_class_name == 'NaiveBiddingStrategy':
-                    strategy = NaiveBiddingStrategy(**strategy_params)
+                    strategy = NaiveBiddingStrategy(training_data=self.training_data, **strategy_params)
                 elif strategy_class_name == 'MovingAverageBiddingStrategy':
-                    strategy = MovingAverageBiddingStrategy(**strategy_params)
-                elif strategy_class_name == 'ArimaBiddingStrategy':
-                    strategy = ArimaBiddingStrategy(**strategy_params)
+                    strategy = MovingAverageBiddingStrategy(training_data=self.training_data, **strategy_params)
                 elif strategy_class_name == 'NaturalGasBiddingStrategy':
                     strategy = NaturalGasBiddingStrategy(exogenous_data=self.exogenous_data, training_data=self.training_data, **strategy_params)
                 elif strategy_class_name == 'CoalBiddingStrategy':
                     strategy = CoalBiddingStrategy(exogenous_data=self.exogenous_data, training_data=self.training_data, **strategy_params)
                 elif strategy_class_name == 'DammedHydroBiddingStrategy':
                     strategy = DammedHydroBiddingStrategy(exogenous_data=self.exogenous_data, training_data=self.training_data, **strategy_params)
-                else:
-                    raise ValueError(f"Bidding strategy error: {strategy_class_name}")
-                strategy.train(self.training_data)
 
                 if agent_name in self.validation_data.columns:
                     schedule = self.validation_data[agent_name].tolist()
                 else:
                     raise ValueError(f"Agent error: {agent_name}")
-                
+
                 agent = Producer(name=agent_name, generation_schedule=schedule, bidding_strategy=strategy)
 
             self.agents.append(agent)
@@ -170,19 +164,13 @@ class BiddingStrategy:
     def __init__(self):
         self.bidding_prices_quantities = []
 
-    def train(self, training_data):
-        pass
-
     def create_bid(self, index, date, agent):
         self.bidding_prices_quantities = []
 
 class NaiveBiddingStrategy(BiddingStrategy):
-    def __init__(self, **kwargs):
+    def __init__(self, training_data, **kwargs):
         super().__init__()
         self.period = int(kwargs.get('period', 1))
-        self.historical_prices = []
-
-    def train(self, training_data):
         self.historical_prices = training_data['Prices'].tolist()
 
     def create_bid(self, index, date, agent):
@@ -197,12 +185,9 @@ class NaiveBiddingStrategy(BiddingStrategy):
             self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
 
 class MovingAverageBiddingStrategy(BiddingStrategy):
-    def __init__(self, **kwargs):
+    def __init__(self, training_data, **kwargs):
         super().__init__()
         self.window_size = int(kwargs.get('window_size', 3))
-        self.historical_prices = []
-
-    def train(self, training_data):
         self.historical_prices = training_data['Prices'].tolist()
 
     def create_bid(self, index, date, agent):
@@ -216,46 +201,6 @@ class MovingAverageBiddingStrategy(BiddingStrategy):
         if quantity > 0:
             self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
 
-class ArimaBiddingStrategy(BiddingStrategy):
-    def __init__(self, **kwargs):
-        super().__init__()
-
-    def train(self, training_data):
-        pass
-
-    def create_bid(self, index, date, agent):
-        pass
-
-class HighRiskBiddingStrategy(BiddingStrategy):
-    def __init__(self, **kwargs):
-        super().__init__()
-
-    def train(self, training_data):
-        pass
-
-    def create_bid(self, index, date, agent):
-        pass
-
-class LowRiskBiddingStrategy(BiddingStrategy):
-    def __init__(self, **kwargs):
-        super().__init__()
-
-    def train(self, training_data):
-        pass
-
-    def create_bid(self, index, date, agent):
-        pass
-
-class ZeroBiddingStrategy(BiddingStrategy):
-    def __init__(self, **kwargs):
-        super().__init__()
-
-    def train(self, training_data):
-        pass
-
-    def create_bid(self, index, date, agent):
-        pass
-
 class NaturalGasBiddingStrategy(BiddingStrategy):
     def __init__(self, exogenous_data, training_data, **kwargs):
         super().__init__()
@@ -263,31 +208,33 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
         self.training_data = training_data
         self.num_bids = 1000
 
-    def train(self, training_data):
-        pass
-
     def create_bid(self, index, date, agent):
         self.bidding_prices_quantities = []
-        natural_gas_kgup = self.exogenous_data.loc[self.exogenous_data['Date'] == date, 'NaturalgasKgup']
+        natural_gas_row = self.exogenous_data[self.exogenous_data['Date'] == date]
 
-        lag_1_time = (datetime.strptime(date, "%d.%m.%Y %H:%M:%S") - timedelta(days=1)).strftime("%d.%m.%Y %H:%M:%S")
-        lag_7_time = (datetime.strptime(date, "%d.%m.%Y %H:%M:%S") - timedelta(days=7)).strftime("%d.%m.%Y %H:%M:%S")
+        natural_gas_kgup = natural_gas_row['NaturalgasKgup'].values[0]
 
-        lag_1_price = self.training_data.loc[self.training_data['Date'] == lag_1_time, 'Prices']
-        lag_7_price = self.training_data.loc[self.training_data['Date'] == lag_7_time, 'Prices']
+        lag_1_time = date - timedelta(days=1)
+        lag_7_time = date - timedelta(days=7)
+
+        lag_1_price_row = self.training_data[self.training_data['Date'] == lag_1_time]
+        lag_7_price_row = self.training_data[self.training_data['Date'] == lag_7_time]
+
+        lag_1_price = lag_1_price_row['Prices'].values[0]
+        lag_7_price = lag_7_price_row['Prices'].values[0]
 
         natural_gas_forecast = 604.57 * math.log(natural_gas_kgup) + 0.14 * lag_1_price + 0.22 * lag_7_price - 3802.96
 
         P_cost = 1778   # Marginal Cost
         P_estimated = natural_gas_forecast
-        P_max = 3000       # Maksimum teklif fiyatı
-        Q_max = 15330        # Maksimum üretim miktarı (Mwh)
+        P_max = 3000       # Maximum bid price
+        Q_max = 15330      # Maximum production quantity (MWh)
         Q_mean = natural_gas_kgup
 
         mu = P_estimated
 
-        p1 = 0.01  # P_cost için
-        p2 = 0.99  # P_max için
+        p1 = 0.01  # For P_cost
+        p2 = 0.99  # For P_max
 
         z1 = norm.ppf(p1) 
         z2 = norm.ppf(p2)
@@ -296,22 +243,19 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
         sigma2 = (P_max - mu) / z2
         sigma = (abs(sigma1) + abs(sigma2)) / 2
 
-        price_range = np.linspace(P_cost, P_max, 1000)
+        price_range = np.linspace(P_cost, P_max, self.num_bids)
         cdf_values = norm.cdf(price_range, loc=mu, scale=sigma/2)
 
-        production=[]
-        for i in cdf_values:
-            production.append(max(((2*Q_mean-Q_max)+(2*Q_max-2*Q_mean) * i), 0))
+        production = [max(((2*Q_mean - Q_max) + (2*Q_max - 2*Q_mean) * cdf), 0) for cdf in cdf_values]
 
         for i in range(self.num_bids):
-            if i==0:
+            if i == 0:
                 price = price_range[i]
                 quantity = production[i]
             else:
                 price = price_range[i]
-                quantity = production[i]-production[i-1]
+                quantity = production[i] - production[i-1]
             self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
-
 
 class CoalBiddingStrategy(BiddingStrategy):
     def __init__(self, exogenous_data, training_data, **kwargs):
@@ -319,28 +263,28 @@ class CoalBiddingStrategy(BiddingStrategy):
         self.exogenous_data = exogenous_data
         self.training_data = training_data
 
-    def train(self, training_data):
-        pass
-
     def create_bid(self, index, date, agent):
         self.bidding_prices_quantities = []
-        coal_price = self.exogenous_data.loc[self.exogenous_data['Date'] == date, 'CoalPrice']
+        coal_price_row = self.exogenous_data[self.exogenous_data['Date'] == date]
+
+        coal_price = coal_price_row['CoalPrice'].values[0]
         
         efficiencies = [0.31, 0.33, 0.34, 0.35, 0.36, 0.37, 0.38, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.47, 0.48, 0.49]
-        productions = [309.26, 505.16, 933.19, 1347.35, 1522.42, 1567.96, 1293.54, 1170.84, 1270.37, 1085.99, 1039.55, 793.80, 597.04, 562.35, 386.15, 341.74, 236.69, 128.13, 78.44]
-        prices=[]
 
-        electricity_generation = 7 #mWh
-        startup_fuel = 7.50 #MMBTU/MW Capacity
+        productions = [309.26, 505.16, 933.19, 1347.35, 1522.42, 1567.96, 1293.54, 1170.84, 1270.37, 1085.99, 1039.55, 793.80, 597.04, 562.35, 386.15, 341.74, 236.69, 128.13]
+
+        electricity_generation = 7  # MWh
+        startup_fuel = 7.50  # MMBTU/MW Capacity
         other_startup_cost = 5.61 
         cycling_cost = other_startup_cost + startup_fuel * (coal_price / 25.792)
         markdown = cycling_cost / 16
 
-        for i in efficiencies:
-            stmc = coal_price / (i * electricity_generation)
-            prices.append(stmc-markdown)
+        prices = []
+        for eff in efficiencies:
+            stmc = coal_price / (eff * electricity_generation)
+            prices.append(stmc - markdown)
 
-        for i in range(prices):
+        for i in range(len(prices)):
             price = prices[i]
             quantity = productions[i]
             self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
@@ -352,30 +296,29 @@ class DammedHydroBiddingStrategy(BiddingStrategy):
         self.training_data = training_data
         self.num_bids = 1000
 
-    def train(self, training_data):
-        pass
-
     def create_bid(self, index, date, agent):
         self.bidding_prices_quantities = []
-        dammed_hydro_kgup = self.exogenous_data.loc[self.exogenous_data['Date'] == date, 'DammedHydroKgup']
-        residual_load = self.exogenous_data.loc[self.exogenous_data['Date'] == date, 'ResidualLoad']
+        exog_row = self.exogenous_data[self.exogenous_data['Date'] == date]
 
-        lag_1_time = (datetime.strptime(date, "%d.%m.%Y %H:%M:%S") - timedelta(days=1)).strftime("%d.%m.%Y %H:%M:%S")
+        dammed_hydro_kgup = exog_row['DammedHydroKgup'].values[0]
+        residual_load = exog_row['ResidualLoad'].values[0]
 
-        lag_1_price = self.training_data.loc[self.training_data['Date'] == lag_1_time, 'Prices']
+        lag_1_time = date - timedelta(days=1)
+        lag_1_price_row = self.training_data[self.training_data['Date'] == lag_1_time]
+        lag_1_price = lag_1_price_row['Prices'].values[0]
 
-        dammed_hydro_forecast = 342.313 * (dammed_hydro_kgup/residual_load) + 0.01274 * residual_load + 0.7737 * lag_1_price + 179.72
+        dammed_hydro_forecast = (342.313 * (dammed_hydro_kgup / residual_load) + 0.01274 * residual_load + 0.7737 * lag_1_price + 179.72)
 
         P_cost = 0   # Marginal Cost
         P_estimated = dammed_hydro_forecast
-        P_max = 3000       # Maksimum teklif fiyatı
-        Q_max = 13520        # Maksimum üretim miktarı (Mwh)
+        P_max = 3000       # Maximum bid price
+        Q_max = 13520      # Maximum production quantity (MWh)
         Q_mean = dammed_hydro_kgup
 
         mu = P_estimated
 
-        p1 = 0.01  # P_cost için
-        p2 = 0.99  # P_max için
+        p1 = 0.01  # For P_cost
+        p2 = 0.99  # For P_max
 
         z1 = norm.ppf(p1) 
         z2 = norm.ppf(p2)
@@ -384,16 +327,18 @@ class DammedHydroBiddingStrategy(BiddingStrategy):
         sigma2 = (P_max - mu) / z2
         sigma = (abs(sigma1) + abs(sigma2)) / 2
 
-        price_range = np.linspace(P_cost, P_max, 1000)
+        price_range = np.linspace(P_cost, P_max, self.num_bids)
         cdf_values = norm.cdf(price_range, loc=mu, scale=sigma/2)
-        
-        production=[]
-        for i in cdf_values:
-            production.append(max(((2*Q_mean-Q_max)+(2*Q_max-2*Q_mean) * i), 0))
+
+        production = [max(((2*Q_mean - Q_max) + (2*Q_max - 2*Q_mean) * cdf), 0) for cdf in cdf_values]
 
         for i in range(self.num_bids):
-            price = price_range[i]
-            quantity = production[i]
+            if i == 0:
+                price = price_range[i]
+                quantity = production[i]
+            else:
+                price = price_range[i]
+                quantity = production[i] - production[i-1]
             self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
 
 class Bid:
