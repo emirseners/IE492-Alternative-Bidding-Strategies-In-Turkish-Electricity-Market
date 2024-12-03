@@ -218,6 +218,28 @@ class ZeroBiddingStrategy(BiddingStrategy):
         quantity = zero_bid_amount
         self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
         
+class ConsumerBiddingStrategy(BiddingStrategy):
+    def __init__(self, exogenous_data, training_data, **kwargs):
+        super().__init__()
+        self.exogenous_data = exogenous_data
+        self.training_data = training_data
+
+    def train(self, training_data):
+        pass
+
+    def create_bid(self, index, date, agent):
+        self.bidding_prices_quantities = []
+        date_row = self.exogenous_data[self.exogenous_data['Date'] == date]
+
+        for i in range(len(date_row)):
+            if i == 0:
+                price = date_row['Prices'].values[i]
+                quantity = date_row['Quantity'].values[i]
+            else:
+                price = date_row['Prices'].values[i]
+                quantity = date_row['Quantity'].values[i] - date_row['Quantity'].values[i-1]
+            self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
+
 
 class NaturalGasBiddingStrategy(BiddingStrategy):
     def __init__(self, exogenous_data, training_data, **kwargs):
