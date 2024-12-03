@@ -201,6 +201,24 @@ class MovingAverageBiddingStrategy(BiddingStrategy):
         if quantity > 0:
             self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
 
+class ZeroBiddingStrategy(BiddingStrategy):
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.exogenous_data = exogenous_data
+        self.training_data = training_data
+        
+    def train(self, training_data):
+        pass
+        
+    def create_bid(self, index, date, agent):
+        self.bidding_prices_quantities = []
+        zero_bid_row = self.exogenous_data[self.exogenous_data['Date'] == date]
+        zero_bid_amount = zero_bid_row['ZeroBidQuantity'].values[0]
+        price = 0
+        quantity = zero_bid_amount
+        self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
+        
+
 class NaturalGasBiddingStrategy(BiddingStrategy):
     def __init__(self, exogenous_data, training_data, **kwargs):
         super().__init__()
