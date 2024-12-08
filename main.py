@@ -1,6 +1,5 @@
 import pandas as pd
 import ast
-import numpy as np
 import math
 from datetime import timedelta
 from scipy.stats import norm
