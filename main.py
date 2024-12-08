@@ -261,7 +261,7 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
 
         cdf_diff = cdf_at_mean - cdf_at_0
 
-        scale_factor = target_production / cdf_diff
+        scale_factor = natural_gas_kgup / cdf_diff
 
         price_range = np.linspace(0, 3000, 3001)
         pdf_values = norm.pdf(price_range, loc=point_estimate, scale=std_dev)
@@ -315,35 +315,52 @@ class DammedHydroBiddingStrategy(BiddingStrategy):
         exog_row = self.exogenous_data[self.exogenous_data['Date'] == date]
         dammed_hydro_kgup = exog_row['DammedHydroKgup'].values[0]
         residual_load = exog_row['ResidualLoad'].values[0]
+        dammed_over_RL = dammed_hydro_kgup/residual_load
+        
 
         lag_1_time = date - timedelta(days=1)
         lag_1_price_row = self.training_data[self.training_data['Date'] == lag_1_time]
 
         lag_1_price = lag_1_price_row['Prices'].values[0]
-        dammed_hydro_forecast = (342.313*(dammed_hydro_kgup/residual_load)+0.01274*residual_load+0.7737*lag_1_price+179.72)
 
-        P_cost = 0
-        mu = dammed_hydro_forecast
-        P_max = 3000
-        Q_max = 13520
+        ##df['price_day_before'] = df['Price'].shift(24)
+        ##df = df.dropna().reset_index(drop=True)
 
-        sigma1 = (P_cost - mu)/norm.ppf(0.01)
-        sigma2 = (P_max - mu)/norm.ppf(0.99)
-        sigma = (abs(sigma1)+abs(sigma2))/2
+        ##df['DammedHydro/RL'] = df['DammedHydroKgup'] / df['ResidualLoad']
 
-        price_range = np.linspace(P_cost, P_max, self.num_bids)
-        cdf_values = norm.cdf(price_range, loc=mu, scale=sigma/2)
-        production = [max(((2*dammed_hydro_kgup - Q_max)+(2*Q_max-2*dammed_hydro_kgup)*cdf),0) for cdf in cdf_values]
+        current_year = date.year
+        current_month = date.month
+        train_year = current_year - 1
 
-        for i in range(self.num_bids):
-            if i==0:
-                price = price_range[i]
-                quantity = production[i]
-            else:
-                price = price_range[i]
-                quantity = production[i]-production[i-1]
-            if quantity >0:
-                self.bidding_prices_quantities.append({'price': price,'quantity':quantity})
+        ##train_data = df[(df['Date'].dt.year == train_year) & (df['Date'].dt.month == current_month)]
+
+        X = train_data[['DammedHydro/RL', 'DammedHydroKgup', 'price_day_before']]
+        y = train_data['Prices']
+
+        model = LinearRegression()
+        model.fit(X, y)
+
+        X_pred = np.array([[dammed_over_RL, dammed_hydro_kgup, lag_1_price]])
+        point_estimate = model.predict(X_pred)[0]
+
+        std_dev = point_estimate * 0.05
+
+        cdf_at_mean = norm.cdf(point_estimate, loc=point_estimate, scale=std_dev)
+        cdf_at_0 = norm.cdf(0, loc=point_estimate, scale=std_dev)
+
+        cdf_diff = cdf_at_mean - cdf_at_0
+
+        scale_factor = dammed_hydro_kgup / cdf_diff
+
+        price_range = np.linspace(0, 3000, 3001)
+        pdf_values = norm.pdf(price_range, loc=point_estimate, scale=std_dev)
+        quantities = pdf_values * scale_factor
+
+        for i in range(price_range):
+            price = price_range[i]
+            quantity = quantities[i]
+            if quantity > 0:
+                self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
 
 class ZeroBiddingStrategy(BiddingStrategy):
     def __init__(self, exogenous_data, training_data, **kwargs):
