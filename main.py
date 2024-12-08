@@ -240,28 +240,36 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
         lag_1_price = lag_1_price_row['Prices'].values[0]
         lag_7_price = lag_7_price_row['Prices'].values[0]
 
-        natural_gas_forecast = 604.57 * math.log(natural_gas_kgup) + 0.14 * lag_1_price + 0.22 * lag_7_price - 3802.96
+        ##df['price_day_before'] = df['price'].shift(24)
+        ##df['price_week_before'] = df['price'].shift(168)
+        ##df = df.dropna().reset_index(drop=True)
 
-        P_cost = 1778
-        mu = natural_gas_forecast
-        P_max = 3000
-        Q_max = 15330
+        ##X = df[['production_forecast', 'price_day_before', 'price_week_before']].copy()
+        ##X['production_forecast'] = np.log(X['production_forecast'])
+        ##y = df['price']
 
-        sigma1 = (P_cost - mu) / norm.ppf(0.01) 
-        sigma2 = (P_max - mu) / norm.ppf(0.99)
-        sigma = (abs(sigma1) + abs(sigma2)) / 2
+        model = LinearRegression()
+        model.fit(X, y)
 
-        price_range = np.linspace(P_cost, P_max, self.num_bids)
-        cdf_values = norm.cdf(price_range, loc=mu, scale=sigma/2)
-        production = [max(((2*natural_gas_kgup - Q_max)+(2*Q_max-2*natural_gas_kgup)*cdf), 0) for cdf in cdf_values]
+        X_pred = np.array([[natural_gas_kgup, lag_1_price, lag_7_price]])
+        point_estimate = model.predict(X_pred)[0]
 
-        for i in range(self.num_bids):
-            if i == 0:
-                price = price_range[i]
-                quantity = production[i]
-            else:
-                price = price_range[i]
-                quantity = production[i] - production[i-1]
+        std_dev = point_estimate * 0.05
+
+        cdf_at_mean = norm.cdf(point_estimate, loc=point_estimate, scale=std_dev)
+        cdf_at_0 = norm.cdf(0, loc=point_estimate, scale=std_dev)
+
+        cdf_diff = cdf_at_mean - cdf_at_0
+
+        scale_factor = target_production / cdf_diff
+
+        price_range = np.linspace(0, 3000, 3001)
+        pdf_values = norm.pdf(price_range, loc=point_estimate, scale=std_dev)
+        quantities = pdf_values * scale_factor
+
+        for i in range(price_range):
+            price = price_range[i]
+            quantity = quantities[i]
             if quantity > 0:
                 self.bidding_prices_quantities.append({'price': price, 'quantity': quantity})
 
