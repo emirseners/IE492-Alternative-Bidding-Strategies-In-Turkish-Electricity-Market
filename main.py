@@ -240,13 +240,13 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
         lag_1_price = lag_1_price_row['Prices'].values[0]
         lag_7_price = lag_7_price_row['Prices'].values[0]
 
-        ##df['price_day_before'] = df['price'].shift(24)
-        ##df['price_week_before'] = df['price'].shift(168)
+        ##df['price_day_before'] = df['Prices'].shift(24)
+        ##df['price_week_before'] = df['Prices'].shift(168)
         ##df = df.dropna().reset_index(drop=True)
 
-        ##X = df[['production_forecast', 'price_day_before', 'price_week_before']].copy()
-        ##X['production_forecast'] = np.log(X['production_forecast'])
-        ##y = df['price']
+        ##X = df[['NaturalgasKgup', 'price_day_before', 'price_week_before']].copy()
+        ##X['NaturalgasKgup'] = np.log(X['NaturalgasKgup'])
+        ##y = df['Prices']
 
         model = LinearRegression()
         model.fit(X, y)
