@@ -240,13 +240,13 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
         lag_1_price = lag_1_price_row['Prices'].values[0]
         lag_7_price = lag_7_price_row['Prices'].values[0]
 
-        ##df['price_day_before'] = df['Prices'].shift(24)
-        ##df['price_week_before'] = df['Prices'].shift(168)
-        ##df = df.dropna().reset_index(drop=True)
+        ##df['price_day_before'] = df['Prices'].shift(24) # model traininge vermek için lag1 price veri sütunu oluşturmak için
+        ##df['price_week_before'] = df['Prices'].shift(168) # model traininge vermek için lag7 price veri sütunu oluşturmak için
+        ##df = df.dropna().reset_index(drop=True) # kaydırmadan kaynaklanacak None veri satırlarını silmek için
 
-        ##X = df[['NaturalgasKgup', 'price_day_before', 'price_week_before']].copy()
-        ##X['NaturalgasKgup'] = np.log(X['NaturalgasKgup'])
-        ##y = df['Prices']
+        ##X = df[['NaturalgasKgup', 'price_day_before', 'price_week_before']].copy() # burada df yerine doğru veri seti yazılmalı
+        X['NaturalgasKgup'] = np.log(X['NaturalgasKgup'])
+        ##y = df['Prices'] # burada da df yerine doğru veri seti yazılmalı
 
         model = LinearRegression()
         model.fit(X, y)
@@ -323,16 +323,16 @@ class DammedHydroBiddingStrategy(BiddingStrategy):
 
         lag_1_price = lag_1_price_row['Prices'].values[0]
 
-        ##df['price_day_before'] = df['Price'].shift(24)
-        ##df = df.dropna().reset_index(drop=True)
+        ##df['price_day_before'] = df['Price'].shift(24) # model traininge vermek için lag1 price veri sütunu oluşturmak için
+        ##df = df.dropna().reset_index(drop=True) # kaydırmadan kaynaklanacak None veri satırlarını silmek için
 
-        ##df['DammedHydro/RL'] = df['DammedHydroKgup'] / df['ResidualLoad']
+        ##df['DammedHydro/RL'] = df['DammedHydroKgup'] / df['ResidualLoad'] # burada df yerine doğru veri seti yazılmalı
 
         current_year = date.year
         current_month = date.month
         train_year = current_year - 1
 
-        ##train_data = df[(df['Date'].dt.year == train_year) & (df['Date'].dt.month == current_month)]
+        ##train_data = df[(df['Date'].dt.year == train_year) & (df['Date'].dt.month == current_month)] # burada df yerine doğru veri seti yazılmalı
 
         X = train_data[['DammedHydro/RL', 'DammedHydroKgup', 'price_day_before']]
         y = train_data['Prices']
