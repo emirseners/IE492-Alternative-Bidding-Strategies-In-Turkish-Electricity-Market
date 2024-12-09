@@ -227,21 +227,20 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
         self.historical_data = historical_data
         self.bidding_quantities = bidding_quantities
         self.num_bids = 1000
-        self.exogenous_data['price_day_before'] = self.exogenous_data['Prices'].shift(24)
-        self.exogenous_data['price_week_before'] = self.exogenous_data['Prices'].shift(168)
+        self.exogenous_data['price_day_before'] = self.historical_data['Prices'].shift(24)
+        self.exogenous_data['price_week_before'] = self.historical_data['Prices'].shift(168)
         self.exogenous_data = self.exogenous_data.dropna().reset_index(drop=True)
 
     def create_bid(self, date, agent):
         self.bidding_prices_quantities = []
         natural_gas_row = self.exogenous_data[self.exogenous_data['Date'] == date]
         natural_gas_kgup = natural_gas_row['NaturalgasKgup'].values[0]
-
-        lag_1_price = self.exogenous_data[self.exogenous_data['Date'] == date - timedelta(days=1)]['Prices'].values[0]
-        lag_7_price = self.exogenous_data[self.exogenous_data['Date'] == date - timedelta(days=7)]['Prices'].values[0]
+        lag_1_price = self.historical_data[self.historical_data['Date'] == date - timedelta(days=1)]['Prices'].values[0]
+        lag_7_price = self.historical_data[self.historical_data['Date'] == date - timedelta(days=7)]['Prices'].values[0]
 
         X = self.exogenous_data[['NaturalgasKgup', 'price_day_before', 'price_week_before']].copy()
         X['NaturalgasKgup'] = np.log(X['NaturalgasKgup'])
-        y = self.exogenous_data['Prices']
+        y = self.historical_data['Prices']
 
         model = LinearRegression()
         model.fit(X, y)
@@ -371,16 +370,19 @@ class Bid:
         self.price = price
 
 if __name__ == "__main__":
-    start_date = pd.to_datetime('01.01.2023 00:00:00', dayfirst=True)
-    end_date = pd.to_datetime('01.01.2023 14:00:00', dayfirst=True)
+    start_date = pd.to_datetime('09.12.2023 00:00:00', dayfirst=True)
+    end_date = pd.to_datetime('09.12.2023 14:00:00', dayfirst=True)
 
-    historical_data_df = pd.read_excel('MarketData.xlsx', parse_dates=['Date'], dayfirst=True)
+    historical_data_df = pd.read_excel('MarketData.xlsx')
+    historical_data_df['Date'] = pd.to_datetime(historical_data_df['Date'], format='%d.%m.%y %H:%M:%S')
     historical_data_df.sort_values(by='Date', inplace=True)
 
-    exogenous_data_df = pd.read_excel('ExogenousVariables.xlsx', parse_dates=['Date'], dayfirst=True)
+    exogenous_data_df = pd.read_excel('ExogenousVariables.xlsx')
+    exogenous_data_df['Date'] = pd.to_datetime(exogenous_data_df['Date'], format='%d.%m.%y %H:%M:%S')
     exogenous_data_df.sort_values(by='Date', inplace=True)
 
-    consumer_bid_data_df = pd.read_csv('ConsumerBidData.csv', parse_dates=['date'], dayfirst=True)
+    consumer_bid_data_df = pd.read_csv('ConsumerBidData.csv')
+    consumer_bid_data_df['Date'] = pd.to_datetime(consumer_bid_data_df['Date'], format='%d.%m.%y %H:%M:%S')
     consumer_bid_data_df.sort_values(by='date', inplace=True)
 
     simulations = pd.ExcelFile('Agents.xlsx').sheet_names
@@ -392,7 +394,8 @@ if __name__ == "__main__":
             agent_df.fillna({'strategy_params': '{}'}, inplace=True)
             agent_attributes = agent_df.to_dict(orient='records')
 
-            bidding_quantities_df = pd.read_excel('BiddingQuantities.xlsx', sheet_name=simulation_name, parse_dates=['Date'], dayfirst=True)
+            bidding_quantities_df = pd.read_excel('BiddingQuantities.xlsx', sheet_name=simulation_name)
+            bidding_quantities_df['Date'] = pd.to_datetime(bidding_quantities_df['Date'], format='%d.%m.%y %H:%M:%S')
             bidding_quantities_df.fillna(0, inplace=True)
             bidding_quantities_df.sort_values(by='Date', inplace=True)
 
