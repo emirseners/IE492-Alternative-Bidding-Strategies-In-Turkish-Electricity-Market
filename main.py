@@ -1,13 +1,11 @@
 import pandas as pd
 import ast
 import numpy as np
-import math
 from datetime import timedelta
 from scipy.stats import norm
 from sklearn.linear_model import LinearRegression
-
 import os
-import sys
+import matplotlib.pyplot as plt
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
@@ -185,7 +183,7 @@ class ConsumerBiddingStrategy(BiddingStrategy):
     def create_bid(self, date, agent):
         self.bidding_prices_quantities = []
         date_row = self.consumer_bid_data[self.consumer_bid_data['date'] == date]
-        date_row_sorted = date_row.sort_values('price')
+        date_row_sorted = date_row.sort_values('price', ascending = False)
         prices = date_row_sorted['price'].values
         quantities = date_row_sorted['demand'].values
 
@@ -287,7 +285,7 @@ class CoalBiddingStrategy(BiddingStrategy):
 
     def create_bid(self, date, agent):
         self.bidding_prices_quantities = []
-        total_production = 15300                                                              # Adjust
+        total_production = 2000                                                              # Adjust
 
         coal_price_row = self.exogenous_data[self.exogenous_data['Date'] == date]
         coal_price = coal_price_row['CoalPrice'].values[0]
@@ -389,8 +387,8 @@ class Bid:
         self.price = price
 
 if __name__ == "__main__":
-    start_date = pd.to_datetime('09.12.2023 00:00:00', dayfirst=True)
-    end_date = pd.to_datetime('09.12.2023 14:00:00', dayfirst=True)
+    start_date = pd.to_datetime('01.06.2024 00:00:00', dayfirst=True)
+    end_date = pd.to_datetime('01.10.2024 00:00:00', dayfirst=True)
 
     historical_data_df = pd.read_excel('MarketData.xlsx')
     historical_data_df['Date'] = pd.to_datetime(historical_data_df['Date'], format='%d.%m.%y %H:%M:%S')
@@ -456,3 +454,13 @@ if __name__ == "__main__":
                 print(f" Mean Error: {mean_errors}")
                 if wmape is not None:
                     print(f" WMAPE: {wmape}")
+
+                plt.figure(figsize=(8, 6))
+                plt.plot([i+1 for i in range(len(errors))], errors, marker='o', color='blue', linestyle='-', linewidth=2, markersize=6)
+
+                plt.title("Errors in Simulation")
+                plt.xlabel("Indices")
+                plt.ylabel("Errors")
+
+                plt.grid(True)
+                plt.show()
