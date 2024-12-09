@@ -6,6 +6,11 @@ from datetime import timedelta
 from scipy.stats import norm
 from sklearn.linear_model import LinearRegression
 
+import os
+import sys
+
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
 class Simulation:
     def __init__(self, agent_attributes, start_date, end_date, bidding_quantities, historical_data, exogenous_data, consumer_bid_data):
         self.agent_attributes = agent_attributes
@@ -181,8 +186,8 @@ class ConsumerBiddingStrategy(BiddingStrategy):
         self.bidding_prices_quantities = []
         date_row = self.consumer_bid_data[self.consumer_bid_data['date'] == date]
         date_row_sorted = date_row.sort_values('price')
-        prices = date_row_sorted['quantity'].values
-        quantities = date_row_sorted['quantity'].values
+        prices = date_row_sorted['price'].values
+        quantities = date_row_sorted['demand'].values
 
         previous_quantity = 0
         for i in range(len(prices)):
@@ -230,24 +235,31 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
         self.exogenous_data['price_day_before'] = self.historical_data['Prices'].shift(24)
         self.exogenous_data['price_week_before'] = self.historical_data['Prices'].shift(168)
         self.exogenous_data = self.exogenous_data.dropna().reset_index(drop=True)
+        self.historical_data['Prices'] = self.historical_data['Prices'].shift(168)
+        self.historical_data = self.historical_data.dropna().reset_index(drop=True)
 
     def create_bid(self, date, agent):
         self.bidding_prices_quantities = []
         natural_gas_row = self.exogenous_data[self.exogenous_data['Date'] == date]
         natural_gas_kgup = natural_gas_row['NaturalgasKgup'].values[0]
-        lag_1_price = self.historical_data[self.historical_data['Date'] == date - timedelta(days=1)]['Prices'].values[0]
-        lag_7_price = self.historical_data[self.historical_data['Date'] == date - timedelta(days=7)]['Prices'].values[0]
+        lag_1_price = natural_gas_row['price_day_before'].values[0] #self.historical_data[self.historical_data['Date'] == date - timedelta(days=1)]['Prices'].values[0]
+        lag_7_price = natural_gas_row['price_week_before'].values[0] #self.historical_data[self.historical_data['Date'] == date - timedelta(days=7)]['Prices'].values[0]
 
         X = self.exogenous_data[['NaturalgasKgup', 'price_day_before', 'price_week_before']].copy()
         X['NaturalgasKgup'] = np.log(X['NaturalgasKgup'])
         y = self.historical_data['Prices']
 
+
         model = LinearRegression()
         model.fit(X, y)
 
-        X_pred = np.array([[natural_gas_kgup, lag_1_price, lag_7_price]])
-        X_pred[:,0] = np.log(X_pred[:,0])
-        point_estimate = model.predict(X_pred)[0]
+        X_pred_df = pd.DataFrame({
+            'NaturalgasKgup': [np.log(natural_gas_kgup)],
+            'price_day_before': [lag_1_price],
+            'price_week_before': [lag_7_price]
+        })
+
+        point_estimate = model.predict(X_pred_df)[0]
 
         std_dev = max(point_estimate * 0.05, 1e-3)
         price_range = np.linspace(0, 3000, 3001)
@@ -310,6 +322,8 @@ class DammedHydroBiddingStrategy(BiddingStrategy):
         self.exogenous_data['price_day_before'] = self.exogenous_data['Prices'].shift(24)
         self.exogenous_data = self.exogenous_data.dropna().reset_index(drop=True)
         self.exogenous_data['DammedHydro/RL'] = self.exogenous_data['DammedHydroKgup'] / self.exogenous_data['ResidualLoad']
+        self.historical_data['Prices'] = self.historical_data['Prices'].shift(24)
+        self.historical_data = self.historical_data.dropna().reset_index(drop=True)
 
     def create_bid(self, date, agent):
         self.bidding_prices_quantities = []
@@ -323,14 +337,19 @@ class DammedHydroBiddingStrategy(BiddingStrategy):
         train_data = self.exogenous_data[(self.exogenous_data['Date'].dt.year == (date.year - 1)) & 
                                          (self.exogenous_data['Date'].dt.month == date.month)]
 
-        X = train_data[['DammedHydro/RL', 'DammedHydroKgup', 'price_day_before']]
-        y = train_data['Prices']
+        X = self.exogenous_data[['DammedHydro/RL', 'DammedHydroKgup', 'price_day_before']]
+        y = self.historical_data['Prices']
 
         model = LinearRegression()
         model.fit(X, y)
 
-        X_pred = np.array([[dammed_over_RL, dammed_hydro_kgup, lag_1_price]])
-        point_estimate = model.predict(X_pred)[0]
+        X_pred_df = pd.DataFrame({
+            'DammedHydro/RL': [dammed_over_RL],
+            'DammedHydroKgup': [dammed_hydro_kgup],
+            'price_day_before': [lag_1_price]
+        })
+
+        point_estimate = model.predict(X_pred_df)[0]
 
         std_dev = max(point_estimate * 0.05, 1e-3)
         price_range = np.linspace(0, 3000, 3001)
@@ -382,7 +401,7 @@ if __name__ == "__main__":
     exogenous_data_df.sort_values(by='Date', inplace=True)
 
     consumer_bid_data_df = pd.read_csv('ConsumerBidData.csv')
-    consumer_bid_data_df['Date'] = pd.to_datetime(consumer_bid_data_df['Date'], format='%d.%m.%y %H:%M:%S')
+    consumer_bid_data_df['date'] = pd.to_datetime(consumer_bid_data_df['date'], format='%d.%m.%Y %H:%M:%S')
     consumer_bid_data_df.sort_values(by='date', inplace=True)
 
     simulations = pd.ExcelFile('Agents.xlsx').sheet_names
