@@ -239,12 +239,13 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
     def create_bid(self, date, agent):
         self.bidding_prices_quantities = []
         natural_gas_row = self.exogenous_data[self.exogenous_data['Date'] == date]
-        natural_gas_kgup = natural_gas_row['NaturalgasKgup'].values[0]
+        natural_gas_kgup = natural_gas_row['NaturalgasKgupRegression'].values[0]
+        natural_gas_kgup_normalized = natural_gas_row['NaturalgasKgup'].values[0]
         lag_1_price = natural_gas_row['price_day_before'].values[0] #self.historical_data[self.historical_data['Date'] == date - timedelta(days=1)]['Prices'].values[0]
         lag_7_price = natural_gas_row['price_week_before'].values[0] #self.historical_data[self.historical_data['Date'] == date - timedelta(days=7)]['Prices'].values[0]
 
-        X = self.exogenous_data[['NaturalgasKgup', 'price_day_before', 'price_week_before']].copy()
-        X['NaturalgasKgup'] = np.log(X['NaturalgasKgup'])
+        X = self.exogenous_data[['NaturalgasKgupRegression', 'price_day_before', 'price_week_before']].copy()
+        X['NaturalgasKgupRegression'] = np.log(X['NaturalgasKgupRegression'])
         y = self.historical_data['Prices']
 
 
@@ -252,7 +253,7 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
         model.fit(X, y)
 
         X_pred_df = pd.DataFrame({
-            'NaturalgasKgup': [np.log(natural_gas_kgup)],
+            'NaturalgasKgupRegression': [np.log(natural_gas_kgup)],
             'price_day_before': [lag_1_price],
             'price_week_before': [lag_7_price]
         })
@@ -267,7 +268,7 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
         cdf_diff = cdf_at_mean - cdf_at_0
         if cdf_diff == 0:
             return
-        scale_factor = natural_gas_kgup / cdf_diff
+        scale_factor = natural_gas_kgup_normalized / cdf_diff
 
         quantities = pdf_values * scale_factor
         for i in range(len(price_range)):
@@ -285,10 +286,11 @@ class CoalBiddingStrategy(BiddingStrategy):
 
     def create_bid(self, date, agent):
         self.bidding_prices_quantities = []
-        total_production = 2000                                                              # Adjust
+        #total_production = 2000                                                              # Adjust
 
         coal_price_row = self.exogenous_data[self.exogenous_data['Date'] == date]
         coal_price = coal_price_row['CoalPrice'].values[0]
+        total_production = coal_price_row['CoalKgup'].values[0]/2
         efficiencies = [0.31,0.33,0.34,0.35,0.36,0.37,0.38,0.39,0.40,0.41,0.42,0.43,0.44,0.45,0.46,0.47,0.48,0.49]
         mult = [0.020386693, 0.03329996, 0.061515957, 0.088816841, 0.100357438, 0.10335929, 0.085269833, 0.077181166, 0.083742451, 0.071588017, 0.068526615, 0.052327369, 0.039356713, 0.037069851, 0.025454545, 0.022527402, 0.015602837, 0.008446164, 0.005170858]        
         productions = [total_production * m for m in mult]
@@ -319,14 +321,15 @@ class DammedHydroBiddingStrategy(BiddingStrategy):
         self.exogenous_data = pd.merge(self.exogenous_data, self.historical_data[['Date','Prices']], on='Date', how='left')
         self.exogenous_data['price_day_before'] = self.exogenous_data['Prices'].shift(24)
         self.exogenous_data = self.exogenous_data.dropna().reset_index(drop=True)
-        self.exogenous_data['DammedHydro/RL'] = self.exogenous_data['DammedHydroKgup'] / self.exogenous_data['ResidualLoad']
+        self.exogenous_data['DammedHydro/RL'] = self.exogenous_data['DammedHydroKgupRegression'] / self.exogenous_data['ResidualLoad']
         self.historical_data['Prices'] = self.historical_data['Prices'].shift(24)
         self.historical_data = self.historical_data.dropna().reset_index(drop=True)
 
     def create_bid(self, date, agent):
         self.bidding_prices_quantities = []
         exog_row = self.exogenous_data[self.exogenous_data['Date'] == date]
-        dammed_hydro_kgup = exog_row['DammedHydroKgup'].values[0]
+        dammed_hydro_kgup = exog_row['DammedHydroKgupRegression'].values[0]
+        dammed_hydro_kgup_normalized = exog_row['DammedHydroKgup'].values[0]
         residual_load = exog_row['ResidualLoad'].values[0]
         dammed_over_RL = dammed_hydro_kgup/residual_load
 
@@ -335,7 +338,7 @@ class DammedHydroBiddingStrategy(BiddingStrategy):
         train_data = self.exogenous_data[(self.exogenous_data['Date'].dt.year == (date.year - 1)) & 
                                          (self.exogenous_data['Date'].dt.month == date.month)]
 
-        X = self.exogenous_data[['DammedHydro/RL', 'DammedHydroKgup', 'price_day_before']]
+        X = self.exogenous_data[['DammedHydro/RL', 'DammedHydroKgupRegression', 'price_day_before']]
         y = self.historical_data['Prices']
 
         model = LinearRegression()
@@ -343,7 +346,7 @@ class DammedHydroBiddingStrategy(BiddingStrategy):
 
         X_pred_df = pd.DataFrame({
             'DammedHydro/RL': [dammed_over_RL],
-            'DammedHydroKgup': [dammed_hydro_kgup],
+            'DammedHydroKgupRegression': [dammed_hydro_kgup],
             'price_day_before': [lag_1_price]
         })
 
@@ -358,7 +361,7 @@ class DammedHydroBiddingStrategy(BiddingStrategy):
         cdf_diff = cdf_at_mean - cdf_at_0
         if cdf_diff == 0:
             return
-        scale_factor = dammed_hydro_kgup / cdf_diff
+        scale_factor = dammed_hydro_kgup_normalized / cdf_diff
 
         quantities = pdf_values * scale_factor
         for i in range(len(price_range)):
@@ -448,6 +451,16 @@ if __name__ == "__main__":
                 wmape = None if sum_actual==0 else sum_abs_errors/sum_actual
                 mse = sum(squared_errors)/len(squared_errors)
                 mean_errors = sum(errors)/len(errors)
+                
+                errors_data = {
+                    'Date': simulation.dates, 
+                    'Errors': errors,
+                    'Actual Prices': actual_prices,
+                    'Simulated Prices': simulated_prices
+                               }
+
+                errors_df = pd.DataFrame(errors_data) 
+                errors_df.to_excel('errors.xlsx', index=False)
 
                 print("Metrics after simulation:")
                 print(f" MSE: {mse}")
