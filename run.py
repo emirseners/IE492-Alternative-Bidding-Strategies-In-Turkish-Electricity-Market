@@ -125,7 +125,7 @@ class Producer(Agent):
         self.bidding_strategy = bidding_strategy
 
     def submit_bid(self, date):
-        self.bidding_strategy.create_bid(date, self)
+        self.bidding_strategy.create_bid(date)
         bids = []
         for bid_info in self.bidding_strategy.bidding_prices_quantities:
             if bid_info['quantity'] > 0:
@@ -142,7 +142,7 @@ class Consumer(Agent):
         self.bidding_strategy = bidding_strategy
 
     def submit_bid(self, date):
-        self.bidding_strategy.create_bid(date, self)
+        self.bidding_strategy.create_bid(date)
         bids = []
         for bid_info in self.bidding_strategy.bidding_prices_quantities:
             if bid_info['quantity'] > 0:
@@ -157,7 +157,7 @@ class BiddingStrategy:
     def __init__(self):
         self.bidding_prices_quantities = []
 
-    def create_bid(self, date, agent):
+    def create_bid(self, date):
         self.bidding_prices_quantities = []
 
 class ConsumerBiddingStrategy(BiddingStrategy):
@@ -165,11 +165,9 @@ class ConsumerBiddingStrategy(BiddingStrategy):
         super().__init__()
         self.consumer_bid_data = consumer_bid_data
 
-    def create_bid(self, date, agent):
+    def create_bid(self, date):
         self.bidding_prices_quantities = []
         date_row = self.consumer_bid_data[self.consumer_bid_data['date'] == date]
-        if date_row.empty:
-            return
         date_row_sorted = date_row.sort_values('price', ascending=False)
         prices = date_row_sorted['price'].values
         quantities = date_row_sorted['demand'].values
@@ -188,12 +186,9 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
         super().__init__()
         self.exogenous_data = exogenous_data
 
-    def create_bid(self, date, agent):
+    def create_bid(self, date):
         self.bidding_prices_quantities = []
         natural_gas_row = self.exogenous_data[self.exogenous_data['Date'] == date]
-        if natural_gas_row.empty:
-            return
-
         natural_gas_kgup = natural_gas_row['NaturalgasKgupRegression'].values[0]
         natural_gas_kgup_normalized = natural_gas_row['NaturalgasKgup'].values[0]
         lag_1_price = natural_gas_row['price_day_before'].values[0]
@@ -235,11 +230,9 @@ class CoalBiddingStrategy(BiddingStrategy):
         super().__init__()
         self.exogenous_data = exogenous_data
 
-    def create_bid(self, date, agent):
+    def create_bid(self, date):
         self.bidding_prices_quantities = []
         coal_price_row = self.exogenous_data[self.exogenous_data['Date'] == date]
-        if coal_price_row.empty:
-            return
         coal_price = coal_price_row['CoalPrice'].values[0]
         total_production = coal_price_row['CoalKgup'].values[0]/2
         efficiencies = [0.31,0.33,0.34,0.35,0.36,0.37,0.38,0.39,0.40,0.41,0.42,0.43,0.44,0.45,0.46,0.47,0.48,0.49]
@@ -265,11 +258,9 @@ class DammedHydroBiddingStrategy(BiddingStrategy):
         super().__init__()
         self.exogenous_data = exogenous_data.copy()
 
-    def create_bid(self, date, agent):
+    def create_bid(self, date):
         self.bidding_prices_quantities = []
         exog_row = self.exogenous_data[self.exogenous_data['Date'] == date]
-        if exog_row.empty:
-            return
         dammed_hydro_kgup = exog_row['DammedHydroKgupRegression'].values[0]
         dammed_hydro_kgup_normalized = exog_row['DammedHydroKgup'].values[0]
         residual_load = exog_row['ResidualLoad'].values[0]
@@ -311,11 +302,9 @@ class ZeroBiddingStrategy(BiddingStrategy):
         super().__init__()
         self.exogenous_data = exogenous_data
 
-    def create_bid(self, date, agent):
+    def create_bid(self, date):
         self.bidding_prices_quantities = []
         zero_bid_row = self.exogenous_data[self.exogenous_data['Date'] == date]
-        if zero_bid_row.empty:
-            return
         zero_bid_amount = zero_bid_row['ZeroBidQuantity'].values[0]
         self.bidding_prices_quantities.append({'price': 0, 'quantity': zero_bid_amount})
 
@@ -334,13 +323,12 @@ if __name__ == "__main__":
         {"type": "consumer", "name": "Consumer", "bidding_strategy": "ConsumerBiddingStrategy"}
     ]
 
-    start_date = pd.to_datetime('10.09.2024 00:00:00', dayfirst=True)
+    start_date = pd.to_datetime('01.06.2024 00:00:00', dayfirst=True)
     end_date = pd.to_datetime('01.10.2024 00:00:00', dayfirst=True)
 
     exogenous_data_df = pd.read_excel('ExogenousVariables.xlsx')
     exogenous_data_df['Date'] = pd.to_datetime(exogenous_data_df['Date'], format='%d.%m.%y %H:%M:%S')
     exogenous_data_df.sort_values(by='Date', inplace=True)
-
     exogenous_data_df['price_day_before'] = exogenous_data_df['Ptf Prices'].shift(24)
     exogenous_data_df['price_week_before'] = exogenous_data_df['Ptf Prices'].shift(168)
     exogenous_data_df['DammedHydro/RL'] = exogenous_data_df['DammedHydroKgupRegression'] / exogenous_data_df['ResidualLoad']
@@ -366,8 +354,6 @@ if __name__ == "__main__":
 
     actual_prices = []
     simulated_prices = []
-    print(simulated_prices)
-    print(actual_prices)
 
     for d in simulation.dates:
         if d in simulation.actual_prices_map and d in simulation.simulated_prices_map:
