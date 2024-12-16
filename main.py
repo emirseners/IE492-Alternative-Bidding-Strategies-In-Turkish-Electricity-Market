@@ -1,13 +1,8 @@
 import pandas as pd
-import ast
 import numpy as np
-from datetime import timedelta
 from scipy.stats import norm
 from sklearn.linear_model import LinearRegression
-import os
 import matplotlib.pyplot as plt
-
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 class Simulation:
     def __init__(self, agent_attributes, start_date, end_date, exogenous_data, consumer_bid_data):
@@ -57,9 +52,9 @@ class Simulation:
             market_result = self.market.clear_market(date)
             self.market_results.append(market_result)
 
-            actual_price_row = self.exogenous_data[self.exogenous_data['Date'] == date]
+            actual_price_row = self.exogenous_data.loc[self.exogenous_data['Date'] == date]
             actual_price = actual_price_row['Ptf Prices'].values[0] if not actual_price_row.empty else None
-            
+
             simulated_price = market_result['market_clearing_price']
             if actual_price is not None:
                 self.actual_prices_map[date] = actual_price
@@ -171,7 +166,6 @@ class ConsumerBiddingStrategy(BiddingStrategy):
         date_row_sorted = date_row.sort_values('price', ascending=False)
         prices = date_row_sorted['price'].values
         quantities = date_row_sorted['demand'].values
-
         previous_quantity = 0
         for i in range(len(prices)):
             price = prices[i]
@@ -189,20 +183,20 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
     def create_bid(self, date):
         self.bidding_prices_quantities = []
         natural_gas_row = self.exogenous_data[self.exogenous_data['Date'] == date]
-        natural_gas_kgup = natural_gas_row['NaturalgasKgupRegression'].values[0]
-        natural_gas_kgup_normalized = natural_gas_row['NaturalgasKgup'].values[0]
+        natural_gas_kgup = natural_gas_row['NaturalgasKgup'].values[0]
+        natural_gas_kgup_normalized = natural_gas_row['NaturalgasBidQuantity'].values[0]
         lag_1_price = natural_gas_row['price_day_before'].values[0]
         lag_7_price = natural_gas_row['price_week_before'].values[0]
 
-        X = self.exogenous_data[['NaturalgasKgupRegression', 'price_day_before', 'price_week_before']].copy()
-        X['NaturalgasKgupRegression'] = np.log(X['NaturalgasKgupRegression'])
+        X = self.exogenous_data[['NaturalgasKgup', 'price_day_before', 'price_week_before']].copy()
+        X['NaturalgasKgup'] = np.log(X['NaturalgasKgup'])
         y = self.exogenous_data['Ptf Prices']
 
         model = LinearRegression()
         model.fit(X, y)
 
         X_pred_df = pd.DataFrame({
-            'NaturalgasKgupRegression': [np.log(natural_gas_kgup)],
+            'NaturalgasKgup': [np.log(natural_gas_kgup)],
             'price_day_before': [lag_1_price],
             'price_week_before': [lag_7_price]
         })
@@ -234,7 +228,7 @@ class CoalBiddingStrategy(BiddingStrategy):
         self.bidding_prices_quantities = []
         coal_price_row = self.exogenous_data[self.exogenous_data['Date'] == date]
         coal_price = coal_price_row['CoalPrice'].values[0]
-        total_production = coal_price_row['CoalKgup'].values[0]/2
+        total_production = coal_price_row['CoalBidQuantity'].values[0]/2
         efficiencies = [0.31,0.33,0.34,0.35,0.36,0.37,0.38,0.39,0.40,0.41,0.42,0.43,0.44,0.45,0.46,0.47,0.48,0.49]
         mult = [0.020386693, 0.03329996, 0.061515957, 0.088816841, 0.100357438, 0.10335929, 0.085269833, 0.077181166, 
                 0.083742451, 0.071588017, 0.068526615, 0.052327369, 0.039356713, 0.037069851, 0.025454545, 0.022527402, 
@@ -261,13 +255,13 @@ class DammedHydroBiddingStrategy(BiddingStrategy):
     def create_bid(self, date):
         self.bidding_prices_quantities = []
         exog_row = self.exogenous_data[self.exogenous_data['Date'] == date]
-        dammed_hydro_kgup = exog_row['DammedHydroKgupRegression'].values[0]
-        dammed_hydro_kgup_normalized = exog_row['DammedHydroKgup'].values[0]
+        dammed_hydro_kgup = exog_row['DammedHydroKgup'].values[0]
+        dammed_hydro_kgup_normalized = exog_row['DammedHydroBidQuantity'].values[0]
         residual_load = exog_row['ResidualLoad'].values[0]
         dammed_over_RL = dammed_hydro_kgup/residual_load
         lag_1 = exog_row['price_day_before'].values[0]
 
-        X = self.exogenous_data[['DammedHydro/RL', 'DammedHydroKgupRegression', 'price_day_before']]
+        X = self.exogenous_data[['DammedHydro/RL', 'DammedHydroKgup', 'price_day_before']]
         y = self.exogenous_data['Ptf Prices']
 
         model = LinearRegression()
@@ -275,7 +269,7 @@ class DammedHydroBiddingStrategy(BiddingStrategy):
 
         X_pred_df = pd.DataFrame({
             'DammedHydro/RL': [dammed_over_RL],
-            'DammedHydroKgupRegression': [dammed_hydro_kgup],
+            'DammedHydroKgup': [dammed_hydro_kgup],
             'price_day_before': [lag_1]
         })
 
@@ -323,7 +317,7 @@ if __name__ == "__main__":
         {"type": "consumer", "name": "Consumer", "bidding_strategy": "ConsumerBiddingStrategy"}
     ]
 
-    start_date = pd.to_datetime('01.06.2024 00:00:00', dayfirst=True)
+    start_date = pd.to_datetime('01.05.2024 00:00:00', dayfirst=True)
     end_date = pd.to_datetime('01.10.2024 00:00:00', dayfirst=True)
 
     exogenous_data_df = pd.read_excel('ExogenousVariables.xlsx')
@@ -331,7 +325,12 @@ if __name__ == "__main__":
     exogenous_data_df.sort_values(by='Date', inplace=True)
     exogenous_data_df['price_day_before'] = exogenous_data_df['Ptf Prices'].shift(24)
     exogenous_data_df['price_week_before'] = exogenous_data_df['Ptf Prices'].shift(168)
-    exogenous_data_df['DammedHydro/RL'] = exogenous_data_df['DammedHydroKgupRegression'] / exogenous_data_df['ResidualLoad']
+    exogenous_data_df['DammedHydro/RL'] = exogenous_data_df['DammedHydroKgup'] / exogenous_data_df['ResidualLoad']
+    exogenous_data_df["MaxMinusZeroBidQuantity"] = exogenous_data_df["MaxBidQuantity"] - exogenous_data_df["ZeroBidQuantity"]
+    exogenous_data_df["SumOfCoalGasHydroKgup"] = exogenous_data_df["NaturalgasKgup"] + exogenous_data_df["CoalKgup"] + exogenous_data_df["DammedHydroKgup"]
+    exogenous_data_df["NaturalgasBidQuantity"] = exogenous_data_df["MaxMinusZeroBidQuantity"] * exogenous_data_df["NaturalgasKgup"] / exogenous_data_df["SumOfCoalGasHydroKgup"]
+    exogenous_data_df["CoalBidQuantity"] = exogenous_data_df["MaxMinusZeroBidQuantity"] * exogenous_data_df["CoalKgup"] / exogenous_data_df["SumOfCoalGasHydroKgup"]
+    exogenous_data_df["DammedHydroBidQuantity"] = exogenous_data_df["MaxMinusZeroBidQuantity"] * exogenous_data_df["DammedHydroKgup"] / exogenous_data_df["SumOfCoalGasHydroKgup"]
     exogenous_data_df = exogenous_data_df.dropna().reset_index(drop=True)
 
     consumer_bid_data_df = pd.read_csv('ConsumerBidData.csv')
@@ -383,3 +382,17 @@ if __name__ == "__main__":
         plt.ylabel("Errors")
         plt.grid(True)
         plt.show()
+
+        plt.figure(figsize=(10, 6))
+        plt.plot(simulation.dates, actual_prices, label='Actual Prices', color='green')
+        plt.plot(simulation.dates, simulated_prices, label='Simulated Prices', color='red')
+        plt.legend()
+        plt.xlabel('Dates')
+        plt.ylabel('Prices')
+        plt.title('Actual vs Simulated Prices')
+        plt.grid(True)
+        plt.show()
+
+
+
+#110.86
