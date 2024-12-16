@@ -41,6 +41,7 @@ class Simulation:
                     strategy = BiddingStrategy()
 
                 agent = Producer(name=agent_name, bidding_strategy=strategy)
+                agent.bidding_strategy.train_strategy()
             self.agents.append(agent)
 
         self.market.agents.extend(self.agents)
@@ -152,6 +153,9 @@ class BiddingStrategy:
     def __init__(self):
         self.bidding_prices_quantities = []
 
+    def train_strategy(self):
+        pass
+
     def create_bid(self, date):
         self.bidding_prices_quantities = []
 
@@ -159,6 +163,9 @@ class ConsumerBiddingStrategy(BiddingStrategy):
     def __init__(self, consumer_bid_data):
         super().__init__()
         self.consumer_bid_data = consumer_bid_data
+
+    def train_strategy(self):
+        pass
 
     def create_bid(self, date):
         self.bidding_prices_quantities = []
@@ -179,6 +186,13 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
     def __init__(self, exogenous_data):
         super().__init__()
         self.exogenous_data = exogenous_data
+        self.natural_gas_model = LinearRegression()
+    
+    def train_strategy(self):
+        X = self.exogenous_data[['NaturalgasKgup', 'price_day_before', 'price_week_before']].copy()
+        X['NaturalgasKgup'] = np.log(X['NaturalgasKgup'])
+        y = self.exogenous_data['Ptf Prices']
+        self.natural_gas_model.fit(X, y)
 
     def create_bid(self, date):
         self.bidding_prices_quantities = []
@@ -188,20 +202,8 @@ class NaturalGasBiddingStrategy(BiddingStrategy):
         lag_1_price = natural_gas_row['price_day_before'].values[0]
         lag_7_price = natural_gas_row['price_week_before'].values[0]
 
-        X = self.exogenous_data[['NaturalgasKgup', 'price_day_before', 'price_week_before']].copy()
-        X['NaturalgasKgup'] = np.log(X['NaturalgasKgup'])
-        y = self.exogenous_data['Ptf Prices']
-
-        model = LinearRegression()
-        model.fit(X, y)
-
-        X_pred_df = pd.DataFrame({
-            'NaturalgasKgup': [np.log(natural_gas_kgup)],
-            'price_day_before': [lag_1_price],
-            'price_week_before': [lag_7_price]
-        })
-
-        point_estimate = model.predict(X_pred_df)[0]
+        X_pred_df = pd.DataFrame({'NaturalgasKgup': [np.log(natural_gas_kgup)], 'price_day_before': [lag_1_price], 'price_week_before': [lag_7_price]})
+        point_estimate = self.natural_gas_model.predict(X_pred_df)[0]
 
         std_dev = max(point_estimate * 0.05, 1e-3)
         price_range = np.linspace(0, 3000, 3001)
@@ -223,6 +225,9 @@ class CoalBiddingStrategy(BiddingStrategy):
     def __init__(self, exogenous_data):
         super().__init__()
         self.exogenous_data = exogenous_data
+
+    def train_strategy(self):
+        pass
 
     def create_bid(self, date):
         self.bidding_prices_quantities = []
@@ -251,6 +256,12 @@ class DammedHydroBiddingStrategy(BiddingStrategy):
     def __init__(self, exogenous_data):
         super().__init__()
         self.exogenous_data = exogenous_data.copy()
+        self.dammed_hydro_model = LinearRegression()
+
+    def train_strategy(self):
+        X = self.exogenous_data[['DammedHydro/RL', 'DammedHydroKgup', 'price_day_before']]
+        y = self.exogenous_data['Ptf Prices']
+        self.dammed_hydro_model.fit(X, y)
 
     def create_bid(self, date):
         self.bidding_prices_quantities = []
@@ -261,19 +272,13 @@ class DammedHydroBiddingStrategy(BiddingStrategy):
         dammed_over_RL = dammed_hydro_kgup/residual_load
         lag_1 = exog_row['price_day_before'].values[0]
 
-        X = self.exogenous_data[['DammedHydro/RL', 'DammedHydroKgup', 'price_day_before']]
-        y = self.exogenous_data['Ptf Prices']
-
-        model = LinearRegression()
-        model.fit(X, y)
-
         X_pred_df = pd.DataFrame({
             'DammedHydro/RL': [dammed_over_RL],
             'DammedHydroKgup': [dammed_hydro_kgup],
             'price_day_before': [lag_1]
         })
 
-        point_estimate = model.predict(X_pred_df)[0]
+        point_estimate = self.dammed_hydro_model.predict(X_pred_df)[0]
 
         std_dev = max(point_estimate * 0.05, 1e-3)
         price_range = np.linspace(0, 3000, 3001)
@@ -295,6 +300,9 @@ class ZeroBiddingStrategy(BiddingStrategy):
     def __init__(self, exogenous_data):
         super().__init__()
         self.exogenous_data = exogenous_data
+
+    def train_strategy(self):
+        pass
 
     def create_bid(self, date):
         self.bidding_prices_quantities = []
@@ -393,6 +401,15 @@ if __name__ == "__main__":
         plt.grid(True)
         plt.show()
 
+        for agent_name in df_results['Agent'].unique():
+            agent_data = df_results[df_results['Agent'] == agent_name].reset_index(drop=True)            
+            plt.figure(figsize=(10, 6))
+            plt.plot(agent_data.index, agent_data['Quantity'], marker='o', linestyle='-', linewidth=2, markersize=6)
+            plt.title(f'Traded Quantities for {agent_name}')
+            plt.xlabel('Indices')
+            plt.ylabel('Quantity')
+            plt.grid(True)
+            plt.show()
 
 
 #110.86
