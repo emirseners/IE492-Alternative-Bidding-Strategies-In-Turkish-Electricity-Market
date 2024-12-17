@@ -233,7 +233,7 @@ class CoalBiddingStrategy(BiddingStrategy):
         self.bidding_prices_quantities = []
         coal_price_row = self.exogenous_data[self.exogenous_data['Date'] == date]
         coal_price = coal_price_row['CoalPrice'].values[0]
-        total_production = coal_price_row['CoalBidQuantity'].values[0]/2
+        total_production = coal_price_row['CoalBidQuantity'].values[0]
         efficiencies = [0.31,0.33,0.34,0.35,0.36,0.37,0.38,0.39,0.40,0.41,0.42,0.43,0.44,0.45,0.46,0.47,0.48,0.49]
         mult = [0.020386693, 0.03329996, 0.061515957, 0.088816841, 0.100357438, 0.10335929, 0.085269833, 0.077181166, 
                 0.083742451, 0.071588017, 0.068526615, 0.052327369, 0.039356713, 0.037069851, 0.025454545, 0.022527402, 
