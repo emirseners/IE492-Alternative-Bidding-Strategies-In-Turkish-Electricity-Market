@@ -38,6 +38,8 @@ class Simulation:
                     strategy = DammedHydroBiddingStrategy(exogenous_data=self.exogenous_data)
                 elif strategy_class_name == 'ZeroBiddingStrategy':
                     strategy = ZeroBiddingStrategy(exogenous_data=self.exogenous_data)
+                elif strategy_class_name == 'MarginalCostBiddingStrategy':
+                    strategy = MarginalCostBiddingStrategy(exogenous_data=self.exogenous_data)
                 else:
                     strategy = BiddingStrategy()
 
@@ -310,6 +312,20 @@ class ZeroBiddingStrategy(BiddingStrategy):
         zero_bid_row = self.exogenous_data[self.exogenous_data['Date'] == date]
         zero_bid_amount = zero_bid_row['ZeroBidQuantity'].values[0]
         self.bidding_prices_quantities.append({'price': 0, 'quantity': zero_bid_amount})
+
+class MarginalCostBiddingStrategy(BiddingStrategy):
+    def __init__(self, exogenous_data):
+        super().__init__()
+        self.exogenous_data = exogenous_data
+
+    def train_strategy(self):
+        pass
+
+    def create_bid(self, date):
+        bid_amount = 1000
+        marginal_cost = 100
+        self.bidding_prices_quantities = []
+        self.bidding_prices_quantities.append({'price': marginal_cost, 'quantity': bid_amount})
 
 class Bid:
     def __init__(self, agent, quantity, price):
