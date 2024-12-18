@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from pandas.tseries.offsets import DateOffset
+from scipy.stats import norm
 from sklearn.linear_model import LinearRegression
 import matplotlib.pyplot as plt
 import math
@@ -329,16 +329,6 @@ if __name__ == "__main__":
     start_date = pd.to_datetime('01.05.2024 00:00:00', dayfirst=True)
     end_date = pd.to_datetime('01.10.2024 00:00:00', dayfirst=True)
 
-    combinations = {
-        '01.05.2024 00:00:00': [0.65, 0.15, 0.2],
-        '01.06.2024 00:00:00': [0.55, 0.15, 0.3],
-        '01.07.2024 00:00:00': [0.60, 0.15, 0.25],
-        '01.08.2024 00:00:00': [0.65, 0.15, 0.2],
-        '01.09.2024 00:00:00': [0.60, 0.10, 0.3]
-    }
-
-    combinations = {pd.to_datetime(k, format='%d.%m.%Y %H:%M:%S'): v for k, v in combinations.items()}
-
     exogenous_data_df = pd.read_excel('ExogenousVariables.xlsx')
     exogenous_data_df['Date'] = pd.to_datetime(exogenous_data_df['Date'], format='%d.%m.%y %H:%M:%S')
     exogenous_data_df.sort_values(by='Date', inplace=True)
@@ -346,23 +336,10 @@ if __name__ == "__main__":
     exogenous_data_df['price_week_before'] = exogenous_data_df['Ptf Prices'].shift(168)
     exogenous_data_df['DammedHydro/RL'] = exogenous_data_df['DammedHydroKgup'] / exogenous_data_df['ResidualLoad']
     exogenous_data_df["MaxMinusZeroBidQuantity"] = exogenous_data_df["MaxBidQuantity"] - exogenous_data_df["ZeroBidQuantity"]
+    exogenous_data_df["NaturalgasBidQuantity"] = 0.5 * exogenous_data_df["MaxMinusZeroBidQuantity"] * exogenous_data_df["NaturalgasKgup"] / (0.5 * exogenous_data_df["NaturalgasKgup"] + 0.15 * exogenous_data_df["CoalKgup"] + 0.35 * exogenous_data_df["DammedHydroKgup"])
+    exogenous_data_df["CoalBidQuantity"] = 0.15 * exogenous_data_df["MaxMinusZeroBidQuantity"] * exogenous_data_df["CoalKgup"] / (0.5 * exogenous_data_df["NaturalgasKgup"] + 0.15 * exogenous_data_df["CoalKgup"] + 0.35 * exogenous_data_df["DammedHydroKgup"])
+    exogenous_data_df["DammedHydroBidQuantity"] = 0.35 * exogenous_data_df["MaxMinusZeroBidQuantity"] * exogenous_data_df["DammedHydroKgup"] / (0.5 * exogenous_data_df["NaturalgasKgup"] + 0.15 * exogenous_data_df["CoalKgup"] + 0.35 * exogenous_data_df["DammedHydroKgup"])
     exogenous_data_df = exogenous_data_df.dropna().reset_index(drop=True)
-    exogenous_data_df["NaturalgasBidQuantity"] = np.nan
-    exogenous_data_df["CoalBidQuantity"] = np.nan
-    exogenous_data_df["DammedHydroBidQuantity"] = np.nan
-
-    current_date = start_date
-    while current_date < end_date:
-        next_date = current_date + DateOffset(months=1)
-        condition = (exogenous_data_df['Date'] >= current_date) & (exogenous_data_df['Date'] < next_date)
-        values = combinations[current_date]
-        denominator = (values[0] * exogenous_data_df["NaturalgasKgup"] + values[1] * exogenous_data_df["CoalKgup"] + values[2] * exogenous_data_df["DammedHydroKgup"])
-
-        exogenous_data_df.loc[condition, "NaturalgasBidQuantity"] = (values[0] * exogenous_data_df.loc[condition, "MaxMinusZeroBidQuantity"] * exogenous_data_df.loc[condition, "NaturalgasKgup"] / denominator.loc[condition])
-        exogenous_data_df.loc[condition, "CoalBidQuantity"] = (values[1] * exogenous_data_df.loc[condition, "MaxMinusZeroBidQuantity"] * exogenous_data_df.loc[condition, "CoalKgup"] / denominator.loc[condition])
-        exogenous_data_df.loc[condition, "DammedHydroBidQuantity"] = (values[2] * exogenous_data_df.loc[condition, "MaxMinusZeroBidQuantity"] * exogenous_data_df.loc[condition, "DammedHydroKgup"] / denominator.loc[condition])
-
-        current_date = next_date
 
     consumer_bid_data_df = pd.read_csv('ConsumerBidData.csv')
     consumer_bid_data_df['date'] = pd.to_datetime(consumer_bid_data_df['date'], format='%d.%m.%Y %H:%M:%S')
@@ -380,6 +357,7 @@ if __name__ == "__main__":
             final_results.append({'Date': date, 'Agent': agent_name, 'Quantity': quantity, 'TotalTradedQuantity': total_traded_quantity})
 
     df_results = pd.DataFrame(final_results)
+    #df_results.to_excel('SimulationResults.xlsx', sheet_name='Simulation', index=False)
 
     actual_prices = []
     simulated_prices = []
@@ -432,3 +410,6 @@ if __name__ == "__main__":
             plt.ylabel('Quantity')
             plt.grid(True)
             plt.show()
+
+
+#110.86
